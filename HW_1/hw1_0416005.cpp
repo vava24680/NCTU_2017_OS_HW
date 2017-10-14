@@ -158,6 +158,7 @@ void fork_process(char** command_list, int* file_descritor, bool wait_c, int Str
 
 int main(int argc, char const *argv[])
 {
+	const char* EXIT="exit";
 	while(1)
 	{
 		bool wait_c=true;
@@ -171,6 +172,24 @@ int main(int argc, char const *argv[])
 
 		ExtractToken(command_list_1,command_list_2,command_list_1_length,command_list_2_length,wait_c,pipe_red);
 		n_command = (pipe_red==2) ? 2 : 1 ;
+		if(!strcmp(command_list_1[0],EXIT))
+		{
+			for(int i=0;i<command_list_1_length;i++)
+			{
+				if(command_list_1[i]!=NULL)
+					delete[] command_list_1[i];
+			}
+			for(int i=0;i<command_list_2_length;i++)
+			{
+				if(command_list_2[i]!=NULL)
+					delete[] command_list_2[i];
+			}
+			if(command_list_1 != NULL)
+				delete[] command_list_1;
+			if(command_list_2 != NULL)
+				delete[] command_list_2;
+			break;
+		}
 		if(!pipe_red)
 		{
 			fork_process(command_list_1,NULL,wait_c,0);
