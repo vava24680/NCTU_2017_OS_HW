@@ -17,7 +17,11 @@ char** expand_CommandList(unsigned int command_list_length,char** original_addre
 	{
 		new_address[i]=original_address[i];
 	}
-	delete [] original_address;
+	for(int i=command_list_length;i<2*command_list_length;i++)
+	{
+		new_address[i]=NULL;
+	}
+	delete[] original_address;
 	return new_address;
 }
 
@@ -58,6 +62,7 @@ void ExtractToken(char** &command_list_1, char** &command_list_2, unsigned int &
 			}
 			list_p_use[count_use] = NULL;
 			command_list_1_length = list_length_use;
+			command_list_1 = list_p_use;
 
 			list_p_use = command_list_2;
 			count_use = 0;
@@ -79,21 +84,23 @@ void ExtractToken(char** &command_list_1, char** &command_list_2, unsigned int &
 		list_p_use = expand_CommandList(list_length_use,list_p_use);
 		list_length_use*=2;
 	}
-	if(list_p_use==command_list_2)
+	list_p_use[count_use] = NULL;
+	if(pipe_red)
 	{
-		command_list_2_length=list_length_use;
+		command_list_2 = list_p_use;
+		command_list_2_length = list_length_use;
 	}
-	list_p_use[count_use]=NULL;
-	/*if(counter>=command_list_length)
+	else
 	{
-		command_list_1=expand_CommandList(command_list_length,command_list_1);
-		command_list_length*=2;
+		command_list_1 = list_p_use;
+		command_list_1_length = list_length_use;
 	}
-	command_list_1[counter]=NULL;*/
 	/*for(int i=0;i<counter;i++)
 	{
 		printf("%d-th token is %s\n",i+1,command_list_1[i]);
 	}*/
+	//cout << "Command_list_1_len : " << command_list_1_length << endl;
+	//cout << "Command_list_2_len : " << command_list_2_length << endl;
 }
 
 void fork_process(char** command_list, int* file_descritor, bool wait_c, int Stream_Mode)
@@ -103,7 +110,7 @@ void fork_process(char** command_list, int* file_descritor, bool wait_c, int Str
 	child_pid=fork();
 	if(child_pid<0)
 	{
-		fprintf(stderr,"For failed\n");
+		fprintf(stderr,"Fork failed\n");
 	}
 	else if(child_pid==0)
 	{
@@ -155,14 +162,12 @@ int main(int argc, char const *argv[])
 	{
 		bool wait_c=true;
 		int pipe_red = 0;//0-> no pipe and nor IO redirection, 1-> I/O redirection, 2-> Pipe
-		char** command_list_1=0;
-		char** command_list_2=0;
+		char** command_list_1=NULL;
+		char** command_list_2=NULL;
 		unsigned int command_list_1_length=10;
 		unsigned int command_list_2_length=10;
 		unsigned int n_command=0;//also ref to how many tokens
 		cout << ">";
-		//getline(cin,command);
-		//cout << "Your command is " << command << endl;
 
 		ExtractToken(command_list_1,command_list_2,command_list_1_length,command_list_2_length,wait_c,pipe_red);
 		n_command = (pipe_red==2) ? 2 : 1 ;
@@ -203,21 +208,6 @@ int main(int argc, char const *argv[])
 		{
 			wait(NULL);
 		}
-
-		/*for(int i=0;i<command_list_1_length;i++)
-		{
-			if(!command_list_1[i])
-				break;
-			cout << command_list_1[i] << endl;
-		}
-		cout << "Start of command_list_2" << endl;
-		for(int i=0;i<command_list_2_length;i++)
-		{
-			if(!command_list_2[i])
-				break;
-			cout << command_list_2[i] << endl;
-		}*/
-
 		/*Put this segment at the end of while segment*/
 		for(int i=0;i<command_list_1_length;i++)
 		{
