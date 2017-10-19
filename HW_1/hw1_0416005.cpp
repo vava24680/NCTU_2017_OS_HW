@@ -206,7 +206,6 @@ int main(int argc, char const *argv[])
 					cout << "File open error" << endl;
 					continue;
 				}
-				cout << "file descritor is " << file_descritor <<  endl;
 				fork_process(command_list_1,file_descritor,wait_c,1);
 			}
 			else
