@@ -31,7 +31,6 @@ int main(void)
 	unsigned int* C_shm_p = NULL;
 	cout << "Input the matrix demension:";
 	cin >> dimension_input;
-	//cout << endl;
 	A_shm_id = shmget(IPC_PRIVATE, int_size*dimension_input*dimension_input, IPC_CREAT | IPC_EXCL | 0666);
 	B_shm_id = shmget(IPC_PRIVATE, int_size*dimension_input*dimension_input, IPC_CREAT | IPC_EXCL | 0666);
 	C_shm_id = shmget(IPC_PRIVATE, int_size*dimension_input*dimension_input, IPC_CREAT | IPC_EXCL | 0666);
@@ -97,11 +96,7 @@ int main(void)
 			cout << "Multiplying matrices using " << process_number << " processes" << endl;
 		else
 			cout << "Multiplying matrices using " << process_number << " process" << endl;
-		//cout << "Elapsed time: " << sec+(usec/1000000.0)  << " sec, Checksum: " << matrix_result << endl;
-		printf("Elapsed time: %f ms, Checksum: %u\n",sec*1000.0+(usec/1000.0),matrix_result);
-		//cout << "start time : " << start.tv_sec << endl;
-		//cout << "end time : " << end.tv_sec << endl;
-
+		printf("Elapsed time: %f sec, Checksum: %u\n",sec+(usec/1000000.0),matrix_result);
 	}
 
 
