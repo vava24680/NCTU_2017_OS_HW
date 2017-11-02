@@ -98,7 +98,7 @@ int main(void)
 		else
 			cout << "Multiplying matrices using " << process_number << " process" << endl;
 		//cout << "Elapsed time: " << sec+(usec/1000000.0)  << " sec, Checksum: " << matrix_result << endl;
-		printf("Elapsed time: %f sec, Checksum: %u\n",sec+(usec/1000000.0),matrix_result);
+		printf("Elapsed time: %f ms, Checksum: %u\n",sec*1000.0+(usec/1000.0),matrix_result);
 		//cout << "start time : " << start.tv_sec << endl;
 		//cout << "end time : " << end.tv_sec << endl;
 
