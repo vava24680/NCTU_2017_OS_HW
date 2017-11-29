@@ -21,6 +21,7 @@ typedef int (*SORT_FUNCTION)(int, int);
 typedef struct task
 {
 	int task_number;
+	int pivot;
 	pair<int, int> border_pair_;
 	SORT_FUNCTION sort_func_ptr_;
 } TASK;
@@ -107,46 +108,52 @@ public:
 	void new_one_thread(void);
 	void active_pool(void);
 	void set_thread_number(int thread_number);
-	void initial_all_task(void);
-	void add_task(TASK* task_in);
-	void push_idle_thread(THREAD* free_thread);
 	void thread_dispatcher();
+	void deactive_pool(void);
 private:
-	int total_dispatch_times;
+	int total_dispatch_times_;
+	int total_append_job_times_;
 	int total_thread_;
 	bool ready_destroy_;
-	queue<TASK*> task_queue;
+	TASK finish_task_;
+	queue<TASK*> task_queue_;
 	queue<THREAD*> free_thread_queue_;
-	vector<THREAD*> thread_list_;
-	TASK* task_list;
+	vector<TASK> all_task_list_;
+	vector<THREAD*> all_thread_list_;
 private:
-	sem_t* task_queue_mutex_;	//Same function as mutex semaphore in P-C problem.
-	sem_t* task_queue_full_;	//Same function as full semaphore in P-C problem.
+	sem_t* task_queue_mutex_;		//Same function as mutex semaphore in P-C problem.
+	sem_t* task_queue_full_;		//Same function as full semaphore in P-C problem.
 	sem_t* free_thread_queue_full_;	//Same function as full semaphore in P-C problem.
 	sem_t* free_thread_queue_mutex_;//Same function as mutex semaphore in P-C problem.
-	sem_t* finish_semaphore_list_;	//Use to notify main thread that bubble sort are all done.
+	sem_t* bsort_done_sem_list_;	//Use to notify main thread that bubble sort are all done.
+	sem_t* pivot_done_semaphore_;	//Use to notify main thread that partition is done
+	sem_t* finish_task_mutex_;		/*Use to protect the finish_task_ this structure
+									  for tranfer previous task information for apending new tasks*/
 private:
 	void semaphore_enable(void);
-	void semaphore_disable(void);
+	void create_all_task_container(void);
+	void add_task(TASK* task_in);
+	void push_idle_thread(THREAD* free_thread);
+	void wake_one_thread(void);
 	static void* thread_start_routine(void* run_data);
 };
 
 ThreadPool::ThreadPool()
 {//Default constructor
-	task_list = new TASK[16];
-	total_dispatch_times = 0;
+	ready_destroy_ = false;
+	total_dispatch_times_ = 0;
+	total_append_job_times_ = 0;
 	this->semaphore_enable();
-	this->initial_all_task();
-	this->semaphore_enable();
+	this->create_all_task_container();
 }
 ThreadPool::ThreadPool(int total_thread)
 {//Constructor with total_thread number parameter
+	ready_destroy_ = false;
 	this->total_thread_ = total_thread;
-	task_list = new TASK[16];
-	total_dispatch_times = 0;
+	total_dispatch_times_ = 0;
+	total_append_job_times_ = 0;
 	this->semaphore_enable();
-	this->initial_all_task();
-	this->semaphore_enable();
+	this->create_all_task_container();
 }
 
 void ThreadPool::set_thread_number(int thread_number)
@@ -155,75 +162,40 @@ void ThreadPool::set_thread_number(int thread_number)
 }
 
 void ThreadPool::semaphore_enable(void)
-{
+{//Enable all the semaphores will be used in this thread pool
 	this->free_thread_queue_mutex_ = new sem_t;
 	this->free_thread_queue_full_  = new sem_t;
 	this->task_queue_mutex_ = new sem_t;
 	this->task_queue_full_  = new sem_t;
-	this->finish_semaphore_list_  = new sem_t[8];
+	this->bsort_done_sem_list_  = new sem_t[8];
+	this->pivot_done_semaphore_ = new sem_t;
+	this->finish_task_mutex_ = new sem_t;
 	sem_init(free_thread_queue_mutex_, 0, (unsigned int)1);
 	sem_init(free_thread_queue_full_, 0, (unsigned int)0);
 	sem_init(task_queue_mutex_, 0, (unsigned int)1);
 	sem_init(task_queue_full_, 0, (unsigned int)0);
 	for(int i = 0; i < 8; i++)
 	{
-		sem_init(finish_semaphore_list_ + i, 0, (unsigned int)0);
+		sem_init(bsort_done_sem_list_ + i, 0, (unsigned int)0);
 	}
+	sem_init(pivot_done_semaphore_, 0, (unsigned int)0);
+	sem_init(finish_task_mutex_, 0, (unsigned int)1);
 	return;
 }
 
-void ThreadPool::semaphore_disable(void)
-{
-	sem_destroy(this->free_thread_queue_mutex_);
-	sem_destroy(this->free_thread_queue_full_);
-	sem_destroy(this->task_queue_mutex_);
-	sem_destroy(this->task_queue_full_);
-	for(int i = 0; i < 8; i++)
-	{
-		sem_destroy(this->finish_semaphore_list_ + i);
-	}
-	return;
-}
-
-void ThreadPool::new_one_thread(void)
-{
-	THREAD* tmp = new THREAD;
-	this->thread_list_.push_back(tmp);
-	sem_init((&tmp->execute_event), 0, (unsigned int)0);
-	tmp->thread_number = this->total_thread_;
-	tmp->pool_instance = this;
-	pthread_create(&(tmp->thread_id), NULL, &thread_start_routine, (void*)tmp);
-	return;
-}
-
-void ThreadPool::active_pool(void)
-{
-	/*for(int i = 0; i < (this->total_thread_ - 1); i++)
-	{
-		sem_destroy(&(this->thread_list_[i]->execute_event));
-		sem_init(&(this->thread_list_[i]->execute_event), 0, (unsigned int)0);
-	}*/
-	this->task_list[1].border_pair_.first = 0;
-	this->task_list[1].border_pair_.second = input_array.size() - 1;
-	this->add_task(task_list + 1);
-	this->push_idle_thread(this->thread_list_[this->total_thread_ - 1]);
-	this->total_dispatch_times = 0;
-	//semaphore_enable();
-	return;
-}
-
-void ThreadPool::initial_all_task(void)
-{//Initialize task_queue, OK
+void ThreadPool::create_all_task_container(void)
+{//Create all the task container will be used in this thread pool
+	all_task_list_.resize(16);
 	for(int i = 1;i <= 16; i++)
 	{
-		task_list[i].task_number = i;
-		i < 8 ? task_list[i].sort_func_ptr_ = &partition : task_list[i].sort_func_ptr_ = &bubble_sort;
+		all_task_list_[i].task_number = i;
+		i < 8 ? all_task_list_[i].sort_func_ptr_ = &partition : all_task_list_[i].sort_func_ptr_ = &bubble_sort;
 	}
 	return;
 }
 
 void ThreadPool::push_idle_thread(THREAD* idle_thread)
-{
+{//Push a idle thread into free_thread_queue_
 	sem_wait(this->free_thread_queue_mutex_);
 		this->free_thread_queue_.push(idle_thread);
 	sem_post(this->free_thread_queue_mutex_);
@@ -231,10 +203,44 @@ void ThreadPool::push_idle_thread(THREAD* idle_thread)
 	return;
 }
 
+void ThreadPool::wake_one_thread(void)
+{//Wake one thread from free_thread_queue_
+	sem_wait(this->free_thread_queue_full_);
+	sem_wait(this->free_thread_queue_mutex_);
+			THREAD* wake_thread = this->free_thread_queue_.front();
+			this->free_thread_queue_.pop();
+	sem_post(this->free_thread_queue_mutex_);
+	sem_post(&(wake_thread->execute_event));
+	this->total_dispatch_times_++;
+	return;
+}
+
+void ThreadPool::new_one_thread(void)
+{//Create a new thread and also push it into the free_thread_queue_
+	THREAD* tmp = new THREAD;
+	sem_init(&(tmp->execute_event), 0, (unsigned int)0);
+	tmp->thread_number = this->total_thread_;
+	tmp->pool_instance = this;
+	this->all_thread_list_.push_back(tmp);
+	this->push_idle_thread(tmp);
+	pthread_create(&(tmp->thread_id), NULL, &thread_start_routine, (void*)tmp);
+	return;
+}
+
+void ThreadPool::active_pool(void)
+{//Active the pool and push the first task into task_queue_
+	this->all_task_list_[1].border_pair_.first = 0;
+	this->all_task_list_[1].border_pair_.second = input_array.size() - 1;
+	this->add_task(&all_task_list_[1]);
+	this->total_dispatch_times_ = 0;
+	this->total_append_job_times_ = 0;
+	return;
+}
+
 void ThreadPool::add_task(TASK* task_in)
-{//Add a task to task_queue, OK
+{//Add a task to task_queue_, OK
 	sem_wait(this->task_queue_mutex_); //Entry-section
-		this->task_queue.push(task_in); //Critical-section
+		this->task_queue_.push(task_in); //Critical-section
 	sem_post(this->task_queue_mutex_); //Exit-section
 
 	//Signal empty semaphroe to indicate that queue is not empty
@@ -248,7 +254,7 @@ void ThreadPool::thread_dispatcher()
 	 * Extract a idle thread from this->free_thread_queue_*
 	 * and post its semaphore to let it executing	      *
 	 ******************************************************/
-	while(this->total_dispatch_times < 15)
+	/*while(this->total_dispatch_times_ < 15)
 	{
 		sem_wait(this->free_thread_queue_full_);
 		sem_wait(this->free_thread_queue_mutex_);
@@ -256,20 +262,44 @@ void ThreadPool::thread_dispatcher()
 			this->free_thread_queue_.pop();
 		sem_post(this->free_thread_queue_mutex_);
 		sem_post(&(wake_thread->execute_event));
-		this->total_dispatch_times++;
-		//cout << "Already dispatched " << total_dispatch_times << " jobs" << endl;
+		this->total_dispatch_times_++;
+		//cout << "Already dispatched " << total_dispatch_times_ << " jobs" << endl;
+	}*/
+	int tmp_task_number;
+	//cout << free_thread_queue_.size()  << " in the free_thread_queue_" << endl;
+	this->wake_one_thread();
+	while(this->total_append_job_times_ < 7)
+	{
+		sem_wait(this->pivot_done_semaphore_);
+		sem_wait(this->finish_task_mutex_);
+			TASK tmp = finish_task_;
+		sem_post(this->finish_task_mutex_);
+		tmp_task_number = tmp.task_number;
+		all_task_list_[2*tmp_task_number].border_pair_.first = tmp.border_pair_.first;
+		all_task_list_[2*tmp_task_number].border_pair_.second = tmp.pivot - 1;
+		all_task_list_[2*tmp_task_number + 1].border_pair_.first = tmp.pivot + 1;
+		all_task_list_[2*tmp_task_number + 1].border_pair_.second = tmp.border_pair_.second;
+		/*Append two task in the job queue*/
+		this->add_task(&all_task_list_[2*tmp_task_number]);
+		this->add_task(&all_task_list_[2*tmp_task_number + 1]);
+		this->total_append_job_times_++;
+		/*Wake up one thread*/
+		this->wake_one_thread();
+	}
+	//cout << "Main thread outside append block" << endl;
+	while(this->total_dispatch_times_ < 15)
+	{
+		this->wake_one_thread();
 	}
 
-	sem_wait(this->finish_semaphore_list_);
-	sem_wait(this->finish_semaphore_list_ + 1);
-	sem_wait(this->finish_semaphore_list_ + 2);
-	sem_wait(this->finish_semaphore_list_ + 3);
-	sem_wait(this->finish_semaphore_list_ + 4);
-	sem_wait(this->finish_semaphore_list_ + 5);
-	sem_wait(this->finish_semaphore_list_ + 6);
-	sem_wait(this->finish_semaphore_list_ + 7);
-
-	//this->semaphore_disable();
+	sem_wait(this->bsort_done_sem_list_);
+	sem_wait(this->bsort_done_sem_list_ + 1);
+	sem_wait(this->bsort_done_sem_list_ + 2);
+	sem_wait(this->bsort_done_sem_list_ + 3);
+	sem_wait(this->bsort_done_sem_list_ + 4);
+	sem_wait(this->bsort_done_sem_list_ + 5);
+	sem_wait(this->bsort_done_sem_list_ + 6);
+	sem_wait(this->bsort_done_sem_list_ + 7);
 	return;
 }
 
@@ -286,49 +316,70 @@ void* ThreadPool::thread_start_routine(void* run_data)
 	while(1)
 	{
 		sem_wait(&(thread_data->execute_event));
-		//cout << "Thread " << thread_data->thread_number << " wait its semaphore successfully" << endl;
+		if(pool_instance->ready_destroy_)
+		{
+			pthread_detach(pthread_self());
+			break;
+		}
+		/*Get one task from task_queue_*/
 		sem_wait(pool_instance->task_queue_full_);
 		sem_wait(pool_instance->task_queue_mutex_);//Entry-section
-			TASK* task = pool_instance->task_queue.front();
-			pool_instance->task_queue.pop();
+			TASK* task = pool_instance->task_queue_.front();
+			pool_instance->task_queue_.pop();
 		sem_post(pool_instance->task_queue_mutex_);//Out-section
 		task_number = task->task_number;
 
+		/*Use function pointer to direct which function it should go*/
 		int pivot = (*(task->sort_func_ptr_))(task->border_pair_.first, task->border_pair_.second);
-		//cout << "task " << task->task_number << " has been done." << endl;
+
+		/*According to the return value to do different things*/
 		if(pivot >= 0)
 		{
-			(task + task_number)->border_pair_.first = task->border_pair_.first;
-			(task + task_number)->border_pair_.second = pivot - 1;
-			(task + task_number + 1)->border_pair_.first = pivot + 1;
-			(task + task_number + 1)->border_pair_.second = task->border_pair_.second;
-			pool_instance->add_task((task + task_number));
-			pool_instance->add_task((task + task_number + 1));
-			pool_instance->push_idle_thread(thread_data);
+			//Signal main thread that array has been divided into two arrays.
+			sem_wait(pool_instance->finish_task_mutex_);
+				pool_instance->finish_task_.pivot = pivot;
+				pool_instance->finish_task_.border_pair_.first = task->border_pair_.first;
+				pool_instance->finish_task_.border_pair_.second = task->border_pair_.second;
+				pool_instance->finish_task_.task_number = task->task_number;
+				pool_instance->push_idle_thread(thread_data);
+			sem_post(pool_instance->finish_task_mutex_);
+			sem_post(pool_instance->pivot_done_semaphore_);
+			/*Push itself intp idle_thread queue*/
 		}
 		else
 		{
 			pool_instance->push_idle_thread(thread_data);
-			sem_post(pool_instance->finish_semaphore_list_ + task_number - 8);
+			sem_post(pool_instance->bsort_done_sem_list_ + task_number - 8);
 		}
 	}
-
-	//pthread_detach(pthread_self());
 
 	return NULL;
 }
 
+void ThreadPool::deactive_pool(void)
+{
+	this->ready_destroy_ = true;
+	cout << "all_thread_list_ size : " << this->all_thread_list_.size() << endl;
+	cout << "free_thread_queue_ size : " << this->free_thread_queue_.size() << endl;
+	for(unsigned int i = 0; i < this->free_thread_queue_.size();i++)
+	{
+		sem_post(&(free_thread_queue_.front()->execute_event));
+		free_thread_queue_.pop();
+	}
+}
+
 ThreadPool::~ThreadPool()
 {//Destructor
-	delete task_queue_mutex_;
-	delete task_queue_full_;
-	delete free_thread_queue_full_;
-	delete free_thread_queue_mutex_;
-	delete[] finish_semaphore_list_;
-	delete[] task_list;
-	for(int i = 0; i < this->total_thread_; i++)
+	delete this->task_queue_mutex_;
+	delete this->task_queue_full_;
+	delete this->free_thread_queue_full_;
+	delete this->free_thread_queue_mutex_;
+	delete[] this->bsort_done_sem_list_;
+	delete this->pivot_done_semaphore_;
+	delete this->finish_task_mutex_;
+	for(unsigned int i = 0; i < this->all_thread_list_.size(); i++)
 	{
-		delete thread_list_[i];
+		delete this->all_thread_list_[i];
 	}
 }
 
@@ -343,11 +394,11 @@ int main(int argc, char** argv)
 	output_file_name.push_back("output_6.txt");
 	output_file_name.push_back("output_7.txt");
 	output_file_name.push_back("output_8.txt");
-	
+
 	int sec;
 	int usec;
 	struct timeval start, end;
-	ThreadPool* TPool = new ThreadPool;
+	ThreadPool* TPool = new ThreadPool(0);
 	for(int i = 1; i <= MAX_THREAD_NUMBER; i++)
 	{
 		file_input();
@@ -362,9 +413,8 @@ int main(int argc, char** argv)
 		usec = end.tv_usec - start.tv_usec;
 		cout << "Elapsed time with " << i << " thread in the pool :" << sec + usec/1000000.0 << "sec" << endl;
 		write_to_file(output_file_name[i-1]);
-		//cout << "Only " << i << " thread done" << endl;
 	}
-	//TPool->destroy_pool();
+	TPool->deactive_pool();
 	delete TPool;
 	return 0;
 }
