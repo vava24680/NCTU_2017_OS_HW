@@ -128,7 +128,8 @@ private:
 	sem_t* bsort_done_sem_list_;	//Use to notify main thread that bubble sort are all done.
 	sem_t* pivot_done_semaphore_;	//Use to notify main thread that partition is done
 	sem_t* finish_task_mutex_;		/*Use to protect the finish_task_ this structure
-									  for tranfer previous task information for apending new tasks*/
+						 for tranfer previous task information for apending new tasks*/
+	sem_t* detach_done_;
 private:
 	void semaphore_enable(void);
 	void create_all_task_container(void);
@@ -170,6 +171,7 @@ void ThreadPool::semaphore_enable(void)
 	this->bsort_done_sem_list_  = new sem_t[8];
 	this->pivot_done_semaphore_ = new sem_t;
 	this->finish_task_mutex_ = new sem_t;
+	this->detach_done_ = new sem_t;
 	sem_init(free_thread_queue_mutex_, 0, (unsigned int)1);
 	sem_init(free_thread_queue_full_, 0, (unsigned int)0);
 	sem_init(task_queue_mutex_, 0, (unsigned int)1);
@@ -180,16 +182,17 @@ void ThreadPool::semaphore_enable(void)
 	}
 	sem_init(pivot_done_semaphore_, 0, (unsigned int)0);
 	sem_init(finish_task_mutex_, 0, (unsigned int)1);
+	sem_init(detach_done_, 0, (unsigned int)0);
 	return;
 }
 
 void ThreadPool::create_all_task_container(void)
 {//Create all the task container will be used in this thread pool
 	all_task_list_.resize(16);
-	for(int i = 1;i <= 16; i++)
+	for(int i = 1;i < 16; i++)
 	{
 		all_task_list_[i].task_number = i;
-		i < 8 ? all_task_list_[i].sort_func_ptr_ = &partition : all_task_list_[i].sort_func_ptr_ = &bubble_sort;
+		all_task_list_[i].sort_func_ptr_ = ( i < 8 ?  &partition : &bubble_sort);
 	}
 	return;
 }
@@ -254,17 +257,6 @@ void ThreadPool::thread_dispatcher()
 	 * Extract a idle thread from this->free_thread_queue_*
 	 * and post its semaphore to let it executing	      *
 	 ******************************************************/
-	/*while(this->total_dispatch_times_ < 15)
-	{
-		sem_wait(this->free_thread_queue_full_);
-		sem_wait(this->free_thread_queue_mutex_);
-			THREAD* wake_thread = this->free_thread_queue_.front();
-			this->free_thread_queue_.pop();
-		sem_post(this->free_thread_queue_mutex_);
-		sem_post(&(wake_thread->execute_event));
-		this->total_dispatch_times_++;
-		//cout << "Already dispatched " << total_dispatch_times_ << " jobs" << endl;
-	}*/
 	int tmp_task_number;
 	//cout << free_thread_queue_.size()  << " in the free_thread_queue_" << endl;
 	this->wake_one_thread();
@@ -318,6 +310,7 @@ void* ThreadPool::thread_start_routine(void* run_data)
 		sem_wait(&(thread_data->execute_event));
 		if(pool_instance->ready_destroy_)
 		{
+			//cout << "here" << endl;
 			pthread_detach(pthread_self());
 			break;
 		}
@@ -352,19 +345,21 @@ void* ThreadPool::thread_start_routine(void* run_data)
 			sem_post(pool_instance->bsort_done_sem_list_ + task_number - 8);
 		}
 	}
-
+	sem_post(pool_instance->detach_done_);
 	return NULL;
 }
 
 void ThreadPool::deactive_pool(void)
 {
 	this->ready_destroy_ = true;
-	cout << "all_thread_list_ size : " << this->all_thread_list_.size() << endl;
-	cout << "free_thread_queue_ size : " << this->free_thread_queue_.size() << endl;
-	for(unsigned int i = 0; i < this->free_thread_queue_.size();i++)
+	//cout << "all_thread_list_ size : " << this->all_thread_list_.size() << endl;
+	//cout << "free_thread_queue_ size : " << this->free_thread_queue_.size() << endl;
+	unsigned int free_thread_queue_size = this->free_thread_queue_.size();
+	for(unsigned int i = 0; i < free_thread_queue_size;i++)
 	{
 		sem_post(&(free_thread_queue_.front()->execute_event));
 		free_thread_queue_.pop();
+		sem_wait(this->detach_done_);
 	}
 }
 
@@ -377,6 +372,7 @@ ThreadPool::~ThreadPool()
 	delete[] this->bsort_done_sem_list_;
 	delete this->pivot_done_semaphore_;
 	delete this->finish_task_mutex_;
+	delete this->detach_done_;
 	for(unsigned int i = 0; i < this->all_thread_list_.size(); i++)
 	{
 		delete this->all_thread_list_[i];
@@ -411,7 +407,7 @@ int main(int argc, char** argv)
 		gettimeofday(&end, 0);
 		sec = end.tv_sec - start.tv_sec;
 		usec = end.tv_usec - start.tv_usec;
-		cout << "Elapsed time with " << i << " thread in the pool :" << sec + usec/1000000.0 << "sec" << endl;
+		cout << "Elapsed time with " << i << " thread(s) in the pool :" << sec*1000 + usec/1000.0 << "msec" << endl;
 		write_to_file(output_file_name[i-1]);
 	}
 	TPool->deactive_pool();
