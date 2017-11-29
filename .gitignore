@@ -2,6 +2,7 @@
 *.un~
 *.out
 *.log
+HW_3/output*.txt
 HW_4/output*.txt
 correct_sort.txt
 correct_sort
