@@ -2,3 +2,6 @@
 *.un~
 *.out
 *.log
+HW_4/output*.txt
+correct_sort.txt
+correct_sort
