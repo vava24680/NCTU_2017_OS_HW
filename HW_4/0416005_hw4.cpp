@@ -348,7 +348,6 @@ void* ThreadPool::thread_start_routine(void* run_data)
 	sem_post(pool_instance->detach_done_);
 	//return NULL;
 	pthread_exit(NULL);
-	return NULL;
 }
 
 void ThreadPool::deactive_pool(void)
