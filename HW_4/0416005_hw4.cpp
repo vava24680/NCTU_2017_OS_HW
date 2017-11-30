@@ -408,7 +408,7 @@ int main(int argc, char** argv)
 		gettimeofday(&end, 0);
 		sec = end.tv_sec - start.tv_sec;
 		usec = end.tv_usec - start.tv_usec;
-		cout << "Elapsed time with " << i << " thread(s) in the pool :" << sec*1000 + usec/1000.0 << "msec" << endl;
+		cout << "Elapsed time with " << i << " thread(s) in the pool :" << sec*1000 + usec/1000.0 << " msec" << endl;
 		write_to_file(output_file_name[i-1]);
 	}
 	TPool->deactive_pool();
