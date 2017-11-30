@@ -6,7 +6,7 @@ run:compile
 memcheck:compile
 	valgrind --leak-check=full --log-file=memcheck.log ./a.out
 clean:
-	rm -f *.out #output1.txt output2.txt
+	rm -f *.out output*.txt
 correct_sort:
 	g++ -g correct_sort.cpp -o correct_sort
 	./correct_sort
