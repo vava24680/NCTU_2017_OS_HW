@@ -4,5 +4,6 @@
 *.log
 HW_3/output*.txt
 HW_4/output*.txt
+HW_5/trace*.txt
 correct_sort.txt
 correct_sort
