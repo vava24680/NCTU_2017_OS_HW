@@ -339,25 +339,30 @@ void Simulator::fetch(const string &fetch_address)
 
 int main(void)
 {
+	fstream fin;
 	vector<string> input_array;
-	file_input(input_array);
-	unsigned int data_size = input_array.size();
-	//cout << "vecotr memory use " << sizeof(input_array[0])*data_size << endl;
 	/*FIFO part*/
 	cout << "FIFO--" << endl;
 	cout << "size\tmiss\thit\t\tpage fault ratio" << endl;
 	for(int size = 64; size < 1024; size*=2)
 	{
+		fin.open(FILENAME, ios::in);
 		Simulator* simulator_instance = new Simulator(FIFO, size);
-		for(unsigned int i = 0; i < data_size; i++)
+		string temp, address;
+		while(1)
 		{
-			simulator_instance->fetch(input_array[i]);
+			fin >> temp;
+			if(fin.eof())
+				break;
+			fin >> temp;
+			address = temp.substr(0, 5);
+			simulator_instance->fetch(address);
 		}
+		fin.close();
 		cout << size << "\t" << simulator_instance->get_miss_times() << "\t" << simulator_instance->get_hit_times() << "\t";
 		cout.setf(ios_base::fixed);
 		cout.precision(9);
 		cout << simulator_instance->get_miss_rate() << endl;
-		//printf("%f\n",simulator_instance->get_miss_rate());
 		delete simulator_instance;
 	}
 
@@ -366,16 +371,23 @@ int main(void)
 	cout << "size\tmiss\thit\t\tpage fault ratio" << endl;
 	for(int size = 64; size < 1024; size*=2)
 	{
+		fin.open(FILENAME, ios::in);
 		Simulator* simulator_instance = new Simulator(LRU, size);
-		for(unsigned int i = 0; i < data_size; i++)
+		string temp, address;
+		while(1)
 		{
-			simulator_instance->fetch(input_array[i]);
+			fin >> temp;
+			if(fin.eof())
+				break;
+			fin >> temp;
+			address = temp.substr(0, 5);
+			simulator_instance->fetch(address);
 		}
+		fin.close();
 		cout << size << "\t" << simulator_instance->get_miss_times() << "\t" << simulator_instance->get_hit_times() << "\t";
 		cout.setf(ios_base::fixed);
 		cout.precision(9);
 		cout << simulator_instance->get_miss_rate() << endl;
-		//printf("%f\n",simulator_instance->get_miss_rate());
 		delete simulator_instance;
 	}
 	return 0;
