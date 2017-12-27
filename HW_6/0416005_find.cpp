@@ -24,7 +24,7 @@ bool Inode_check(bool previous_check_result,const unsigned int source_inode)
 {
 	if(!previous_check_result)
 		return false;
-	if(Inode == source_inode || !option_match_list[0])
+	if(Inode == source_inode || (!option_match_list[0]))
 		return true;
 	else
 		return false;
@@ -33,7 +33,7 @@ bool File_Name_Check(bool previous_check_result,const string source_file_name)
 {
 	if(!previous_check_result)
 		return false;
-	if(FileName.compare(source_file_name)==0 || !option_match_list[1])
+	if(FileName.compare(source_file_name)==0 || (!option_match_list[1]))
 		return true;
 	else
 		return false;
@@ -42,7 +42,7 @@ bool Min_Size_Check(bool previous_check_result, const unsigned int source_size)
 {
 	if(!previous_check_result)
 		return false;
-	if(SizeRange.first <= B2MB(source_size) || !option_match_list[2])
+	if(SizeRange.first <= B2MB(source_size) || (!option_match_list[2]))
 		return true;
 	else
 		return false;
@@ -52,7 +52,7 @@ bool Max_Size_Check(bool previous_check_result, const unsigned int source_size)
 {
 	if(!previous_check_result)
 		return false;
-	if(SizeRange.second >= B2MB(source_size) || !option_match_list[3])
+	if(SizeRange.second >= B2MB(source_size) || (!option_match_list[3]))
 		return true;
 	else
 		return false;
@@ -69,8 +69,6 @@ void dfs_search(const string path_name)
 		cout << "Specified path is not exist" << endl;
 		return;
 	}
-	/*if(path_name.compare(string(".")))
-		chdir(path_name.c_str());*/
 	struct dirent* entry = readdir(dir_stream);
 	while(entry!=NULL)
 	{
@@ -78,7 +76,10 @@ void dfs_search(const string path_name)
 		previous_check_result = true;
 		if(strcmp(entry->d_name, ".") && strcmp(entry->d_name, ".."))
 		{
-			stat(string(path_name + "/" + entry->d_name).c_str(), &file_detail);
+			if(path_name[path_name.length() - 1] != '/')
+				lstat(string(path_name + "/" + entry->d_name).c_str(), &file_detail);
+			else
+				lstat(string(path_name + entry->d_name).c_str(), &file_detail);
 			//cout << "file : " << entry->d_name << "," << file_detail.st_mode << endl;
 			if(S_ISDIR(file_detail.st_mode))
 			{
@@ -87,22 +88,25 @@ void dfs_search(const string path_name)
 				else
 					deep_path.push_back(path_name + entry->d_name);
 			}
-			previous_check_result &= Inode_check(previous_check_result, entry->d_ino);
-			previous_check_result &= File_Name_Check(previous_check_result, string(entry->d_name));
-			previous_check_result &= Min_Size_Check(previous_check_result, file_detail.st_size);
-			previous_check_result &= Max_Size_Check(previous_check_result, file_detail.st_size);
-			if(previous_check_result)
+			if(S_ISDIR(file_detail.st_mode) || S_ISREG(file_detail.st_mode))
 			{
-				cout.setf(iostream::left);
-				string temp(path_name);
-				if(temp[temp.length() - 1]!='/')
-					temp+='/';
-				temp+=entry->d_name;
-				cout << setw(25) << temp;
-				cout << setw(7) << entry->d_ino;
-				cout.setf(iostream::fixed);
-				cout.precision(9);
-				cout << setw(10) << B2MB(file_detail.st_size) << " MB" << endl;
+				previous_check_result &= Inode_check(previous_check_result, entry->d_ino);
+				previous_check_result &= File_Name_Check(previous_check_result, string(entry->d_name));
+				previous_check_result &= Min_Size_Check(previous_check_result, file_detail.st_size);
+				previous_check_result &= Max_Size_Check(previous_check_result, file_detail.st_size);
+				if(previous_check_result)
+				{
+					cout.setf(iostream::left);
+					string temp(path_name);
+					if(temp[temp.length() - 1]!='/')
+						temp+='/';
+					temp+=entry->d_name;
+					cout << setw(40) << temp;
+					cout << setw(7) << entry->d_ino;
+					cout.setf(iostream::fixed);
+					cout.precision(9);
+					cout << setw(10) << B2MB(file_detail.st_size) << " MB" << endl;
+				}
 			}
 		}
 		entry = readdir(dir_stream);
